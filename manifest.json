@@ -1,0 +1,16 @@
+{
+  "name": "Logística Neveras",
+  "short_name": "Neveras",
+  "description": "Distribución eficiente de cajones",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#333333",
+  "theme_color": "#28a745",
+  "icons": [
+    {
+      "src": "icono.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

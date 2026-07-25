@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Distribución de Cajones</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icono.png" type="image/png">
+    <meta name="theme-color" content="#333333">
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            margin: 0; padding: 10px; 
+            background-image: url('fondo.jpg'); 
+            background-size: cover; 
+            background-position: center; 
+            background-attachment: fixed;
+        }
+        .container { 
+            max-width: 600px; margin: 0 auto; 
+            background: rgba(255, 255, 255, 0.92); 
+            padding: 15px; border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); 
+            backdrop-filter: blur(5px);
+        }
+        h1, h2, h3 { text-align: center; color: #222; margin-top: 0; }
+        .product-group { margin-bottom: 20px; }
+        .product-group h3 { background: #333; color: white; padding: 8px; border-radius: 6px; font-size: 1rem; }
+        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #ddd; }
+        .item-name { flex: 2; font-size: 0.85rem; font-weight: bold; color: #444; }
+        .inputs { flex: 1; display: flex; gap: 5px; }
+        input { width: 40px; padding: 6px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
+        
+        button { 
+            width: 100%; padding: 15px; background-color: #28a745; color: white; 
+            border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold; 
+            margin-top: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        button.btn-secundario { background-color: #6c757d; margin-top: 15px; }
+
+        .grid-container { display: none; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
+        .nevera { 
+            background: rgba(224, 224, 224, 0.8); border: 2px solid #777; 
+            border-radius: 6px; display: flex; flex-direction: column-reverse; 
+            padding: 5px; height: 380px; overflow-y: auto; 
+        }
+        .nevera-title { text-align: center; font-weight: bold; font-size: 0.85rem; margin-bottom: 5px; background: white; border-radius: 4px; padding: 2px;}
+        
+        .cajon { background: #ff9800; color: white; text-align: center; margin: 1px 0; padding: 4px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; border: 1px solid #e65100;}
+        .cajon.delicado { background: #2196f3; border-color: #0b7dda; }
+        .cajon.jq { background: #e91e63; border-color: #c2185b; }
+        .cajon.espacio { background: transparent; border: 2px dashed #999; color: #666; font-style: italic; }
+        .cajon.excedente { background: #9c27b0; border-color: #7b1fa2; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="input-section">
+    <h1>Stock a Refrigerar</h1>
+    
+    <div class="product-group">
+        <h3>Jamón y Queso (Prioridad N1)</h3>
+        <div class="item-row">
+            <span class="item-name">Jamón y Queso (JQ)</span>
+            <div class="inputs"><input type="number" id="st-JQ" placeholder="Hay"><input type="number" id="pe-JQ" placeholder="Llegan"></div>
+        </div>
+    </div>
+    
+    <div class="product-group"><h3>Carnes y Clásicas (N2 y N3)</h3><div id="clasicas-list"></div></div>
+    
+    <div class="product-group" style="background:#e3f2fd; padding:10px; border-radius:8px;">
+        <h3 style="background:#1976d2;">Congelador: Lado Izquierdo</h3>
+        <div id="cong-izq-list"></div>
+    </div>
+    <div class="product-group" style="background:#e3f2fd; padding:10px; border-radius:8px;">
+        <h3 style="background:#1976d2;">Congelador: Lado Derecho</h3>
+        <div id="cong-der-list"></div>
+    </div>
+
+    <button onclick="calcularDistribucion()">Calcular Distribución</button>
+</div>
+
+<div class="container grid-container" id="output-section">
+    <div><div class="nevera-title">Nevera 1 (Max 11)</div><div class="nevera" id="nevera1"></div></div>
+    <div><div class="nevera-title">Nevera 2 (Max 18)</div><div class="nevera" id="nevera2"></div></div>
+    
+    <div style="grid-column: span 2;">
+        <div class="nevera-title">Nevera 3 (Max 20)</div>
+        <div class="nevera" id="nevera3" style="height: auto; min-height: 200px;"></div>
+    </div>
+    
+    <div style="grid-column: span 2; background: rgba(33, 150, 243, 0.1); padding: 5px; border-radius: 8px;">
+        <div class="nevera-title" style="color: #0d47a1;">Congelador (Izquierda 12 | Derecha 12)</div>
+        <div style="display: flex; gap: 10px;">
+            <div class="nevera" id="cong-izq" style="flex: 1; height: 350px;"></div>
+            <div class="nevera" id="cong-der" style="flex: 1; height: 350px;"></div>
+        </div>
+    </div>
+    
+    <button class="btn-secundario" onclick="location.reload()" style="grid-column: span 2;">Nuevo Cálculo</button>
+</div>
+
+<script>
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+
+    const clasicas = ['Bondiola (BD)', 'Capresse (CA)', 'Carne Cuchillo (CC)', 'Carne Picante (CP)', 'Carne Suave (CS)', 'Cheeseburger (CB)', 'Humita (HM)', 'Pollo (PL)', 'Roquefort c/ Jamón (RJ)'];
+    const congIzqArr = ['Choclo y Calabaza', 'Carne Criolla Veg.', 'Pollo Curry Veg.', 'Puerro y Hongos'];
+    const congDerArr = ['Verdura (VR)', 'Cebolla y Queso (CQ)', 'Burrito Ternera', 'Burrito Cerdo', 'Burrito Pollo', 'Burrito Veg.'];
+
+    function generarInputs(array, containerId, prefix) {
+        const container = document.getElementById(containerId);
+        array.forEach((item, index) => {
+            container.innerHTML += `
+                <div class="item-row">
+                    <span class="item-name">${item}</span>
+                    <div class="inputs">
+                        <input type="number" id="st-${prefix}${index}" placeholder="Hay">
+                        <input type="number" id="pe-${prefix}${index}" placeholder="Llegan">
+                    </div>
+                </div>`;
+        });
+    }
+
+    generarInputs(clasicas, 'clasicas-list', 'cl');
+    generarInputs(congIzqArr, 'cong-izq-list', 'ci');
+    generarInputs(congDerArr, 'cong-der-list', 'cd');
+
+    function getVal(id) { return (parseInt(document.getElementById(id).value) || 0); }
+
+    function calcularDistribucion() {
+        document.getElementById('input-section').style.display = 'none';
+        document.getElementById('output-section').style.display = 'grid';
+
+        let maxIzq = 12, maxDer = 12;
+        let cIzq = [], cDer = [];
+
+        // 1. Llenar Congelador Izquierdo
+        congIzqArr.forEach((item, i) => {
+            let total = getVal(`st-ci${i}`) + getVal(`pe-ci${i}`);
+            for(let j=0; j<total; j++) {
+                if(maxIzq > 0) { cIzq.push(`<div class="cajon delicado">${item}</div>`); maxIzq--; }
+            }
+        });
+
+        // 2. Llenar Congelador Derecho
+        congDerArr.forEach((item, i) => {
+            let total = getVal(`st-cd${i}`) + getVal(`pe-cd${i}`);
+            for(let j=0; j<total; j++) {
+                if(maxDer > 0) { cDer.push(`<div class="cajon delicado">${item}</div>`); maxDer--; }
+            }
+        });
+
+        // 3. Preparar listado de Clásicas + Jamón y Queso
+        let itemsRegulares = [];
+        let totalJQ = getVal('st-JQ') + getVal('pe-JQ');
+        itemsRegulares.push({ name: 'Jamón y Queso', qty: totalJQ, isJQ: true });
+
+        clasicas.forEach((item, i) => {
+            let total = getVal(`st-cl${i}`) + getVal(`pe-cl${i}`);
+            if(total > 0) itemsRegulares.push({ name: item, qty: total, isJQ: false });
+        });
+
+        // Orden de mayor a menor
+        itemsRegulares.sort((a, b) => b.qty - a.qty);
+
+        // 4. Lógica de Desbordamiento (Congelado Inteligente)
+        let totalCajonesHeladera = itemsRegulares.reduce((acc, item) => acc + item.qty, 0);
+        let excedente = totalCajonesHeladera - 49; 
+
+        if (excedente > 0) {
+            for (let item of itemsRegulares) {
+                if (excedente <= 0 || (maxIzq + maxDer) <= 0) break;
+                
+                let aCongelar = Math.min(item.qty - 4, excedente, (maxIzq + maxDer));
+                if (aCongelar > 0) {
+                    item.qty -= aCongelar;
+                    excedente -= aCongelar;
+                    
+                    for(let i=0; i<aCongelar; i++) {
+                        if (maxIzq > 0) {
+                            cIzq.push(`<div class="cajon excedente">${item.name} (Exc)</div>`);
+                            maxIzq--;
+                        } else if (maxDer > 0) {
+                            cDer.push(`<div class="cajon excedente">${item.name} (Exc)</div>`);
+                            maxDer--;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Llenar Nevera 1 (Exclusiva JQ)
+        let maxN1 = 11, cN1 = [];
+        let objJQ = itemsRegulares.find(i => i.isJQ);
+        let jqEnN1 = Math.min(objJQ.qty, maxN1);
+        for(let i=0; i<jqEnN1; i++) { cN1.push(`<div class="cajon jq">Jamón y Queso</div>`); }
+        objJQ.qty -= jqEnN1; 
+
+        // 6. Llenar N2 y N3 BALANCEANDO LOS PESOS
+        let maxN2 = 18, maxN3 = 20;
+        let cN2 = [], cN3 = [];
+        let countN2 = 0, countN3 = 0; // Contadores de altura
+        
+        let poolN2N3 = itemsRegulares.filter(i => i.qty > 0).sort((a, b) => b.qty - a.qty);
+        let totalPool = poolN2N3.reduce((acc, item) => acc + item.qty, 0);
+        let permiteEspacios = (totalPool + poolN2N3.length) <= (maxN2 + maxN3);
+
+        poolN2N3.forEach(item => {
+            let remainingToPlace = item.qty;
+
+            while (remainingToPlace > 0) {
+                // Elegir la nevera con MENOS cajones actuales para mantener las bases pesadas
+                let chooseN2 = false;
+                
+                if (countN2 < maxN2 && countN3 < maxN3) {
+                    chooseN2 = countN2 <= countN3; 
+                } else if (countN2 < maxN2) {
+                    chooseN2 = true;
+                } else if (countN3 < maxN3) {
+                    chooseN2 = false;
+                } else {
+                    break; // Ambas llenas
+                }
+
+                let arrayDestino = chooseN2 ? cN2 : cN3;
+                let espacioDisponible = chooseN2 ? (maxN2 - countN2) : (maxN3 - countN3);
+                let cantidadAColocar = Math.min(remainingToPlace, espacioDisponible);
+                
+                for(let i=0; i<cantidadAColocar; i++) {
+                    let clase = item.isJQ ? "cajon jq" : "cajon";
+                    arrayDestino.push(`<div class="${clase}">${item.name}</div>`);
+                    if (chooseN2) countN2++; else countN3++;
+                }
+                
+                remainingToPlace -= cantidadAColocar;
+                
+                // Intercalar rejilla vacía
+                if (remainingToPlace === 0 && permiteEspacios) {
+                    if (chooseN2 && countN2 < maxN2) {
+                        arrayDestino.push(`<div class="cajon espacio">--- Espacio Libre ---</div>`);
+                        countN2++;
+                    } else if (!chooseN2 && countN3 < maxN3) {
+                        arrayDestino.push(`<div class="cajon espacio">--- Espacio Libre ---</div>`);
+                        countN3++;
+                    }
+                }
+            }
+        });
+
+        // 7. Imprimir en pantalla
+        document.getElementById('cong-izq').innerHTML = cIzq.join('');
+        document.getElementById('cong-der').innerHTML = cDer.join('');
+        document.getElementById('nevera1').innerHTML = cN1.join('');
+        document.getElementById('nevera2').innerHTML = cN2.join('');
+        document.getElementById('nevera3').innerHTML = cN3.join('');
+    }
+</script>
+</body>
+</html>
