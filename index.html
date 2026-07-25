@@ -134,15 +134,13 @@
         let maxIzq = 12, maxDer = 12;
         let cIzq = [], cDer = [];
 
-        // 1. Llenar Congelador Izquierdo
+        // 1. Congelador Obligatorio (Delicadas y Burritos)
         congIzqArr.forEach((item, i) => {
             let total = getVal(`st-ci${i}`) + getVal(`pe-ci${i}`);
             for(let j=0; j<total; j++) {
                 if(maxIzq > 0) { cIzq.push(`<div class="cajon delicado">${item}</div>`); maxIzq--; }
             }
         });
-
-        // 2. Llenar Congelador Derecho
         congDerArr.forEach((item, i) => {
             let total = getVal(`st-cd${i}`) + getVal(`pe-cd${i}`);
             for(let j=0; j<total; j++) {
@@ -150,77 +148,89 @@
             }
         });
 
-        // 3. Preparar listado de Clásicas + Jamón y Queso
-        let itemsRegulares = [];
+        // 2. Lógica de Jamón y Queso (Exclusivo N1 y Congelador)
         let totalJQ = getVal('st-JQ') + getVal('pe-JQ');
-        itemsRegulares.push({ name: 'Jamón y Queso', qty: totalJQ, isJQ: true });
+        let maxN1 = 11;
+        let jqParaN1 = Math.min(totalJQ, maxN1);
+        let jqExcedente = totalJQ > maxN1 ? totalJQ - maxN1 : 0;
+        
+        // Enviar excedente de JQ al congelador (si hay espacio)
+        while(jqExcedente > 0 && (maxIzq > 0 || maxDer > 0)) {
+            if (maxIzq > 0) { cIzq.push(`<div class="cajon jq">Jamón y Queso (Exc)</div>`); maxIzq--; }
+            else if (maxDer > 0) { cDer.push(`<div class="cajon jq">Jamón y Queso (Exc)</div>`); maxDer--; }
+            jqExcedente--;
+        }
 
+        let poolN2N3 = [];
+        // Si el congelador se llenó por completo, el JQ restante va a N2/N3 solo como emergencia
+        if (jqExcedente > 0) {
+            poolN2N3.push({ name: 'Jamón y Queso', qty: jqExcedente, isJQ: true });
+        }
+
+        // 3. Lógica Clásicas (Máximo 6 por sabor en nevera, el resto se intenta congelar)
         clasicas.forEach((item, i) => {
             let total = getVal(`st-cl${i}`) + getVal(`pe-cl${i}`);
-            if(total > 0) itemsRegulares.push({ name: item, qty: total, isJQ: false });
+            if(total > 0) {
+                let paraNevera = total;
+                if (total > 6) {
+                    let exceso = total - 6;
+                    let congeladosExitosos = 0;
+                    
+                    while(exceso > 0 && (maxIzq > 0 || maxDer > 0)) {
+                        if (maxIzq > 0) { cIzq.push(`<div class="cajon excedente">${item} (Exc)</div>`); maxIzq--; }
+                        else if (maxDer > 0) { cDer.push(`<div class="cajon excedente">${item} (Exc)</div>`); maxDer--; }
+                        exceso--;
+                        congeladosExitosos++;
+                    }
+                    paraNevera = total - congeladosExitosos; 
+                }
+                poolN2N3.push({ name: item, qty: paraNevera, isJQ: false });
+            }
         });
 
-        // Orden de mayor a menor
-        itemsRegulares.sort((a, b) => b.qty - a.qty);
-
-        // 4. Lógica de Desbordamiento (Congelado Inteligente)
-        let totalCajonesHeladera = itemsRegulares.reduce((acc, item) => acc + item.qty, 0);
-        let excedente = totalCajonesHeladera - 49; 
-
-        if (excedente > 0) {
-            for (let item of itemsRegulares) {
-                if (excedente <= 0 || (maxIzq + maxDer) <= 0) break;
-                
-                let aCongelar = Math.min(item.qty - 4, excedente, (maxIzq + maxDer));
+        // 4. Lógica de Desbordamiento General (si el pool de clásicas supera la capacidad de N2+N3 = 38)
+        poolN2N3.sort((a, b) => b.qty - a.qty);
+        let totalEnN2N3 = poolN2N3.reduce((acc, item) => acc + item.qty, 0);
+        let excedenteGeneral = totalEnN2N3 - 38;
+        
+        if (excedenteGeneral > 0) {
+            for (let item of poolN2N3) {
+                if (excedenteGeneral <= 0 || (maxIzq + maxDer) <= 0) break;
+                // Intentamos dejar un stock operativo base (mínimo 2) si hay que seguir reduciendo
+                let aCongelar = Math.min(item.qty - 2, excedenteGeneral, (maxIzq + maxDer));
                 if (aCongelar > 0) {
                     item.qty -= aCongelar;
-                    excedente -= aCongelar;
-                    
+                    excedenteGeneral -= aCongelar;
                     for(let i=0; i<aCongelar; i++) {
-                        if (maxIzq > 0) {
-                            cIzq.push(`<div class="cajon excedente">${item.name} (Exc)</div>`);
-                            maxIzq--;
-                        } else if (maxDer > 0) {
-                            cDer.push(`<div class="cajon excedente">${item.name} (Exc)</div>`);
-                            maxDer--;
-                        }
+                        if (maxIzq > 0) { cIzq.push(`<div class="cajon excedente">${item.name} (Exc)</div>`); maxIzq--; }
+                        else if (maxDer > 0) { cDer.push(`<div class="cajon excedente">${item.name} (Exc)</div>`); maxDer--; }
                     }
                 }
             }
         }
 
         // 5. Llenar Nevera 1 (Exclusiva JQ)
-        let maxN1 = 11, cN1 = [];
-        let objJQ = itemsRegulares.find(i => i.isJQ);
-        let jqEnN1 = Math.min(objJQ.qty, maxN1);
-        for(let i=0; i<jqEnN1; i++) { cN1.push(`<div class="cajon jq">Jamón y Queso</div>`); }
-        objJQ.qty -= jqEnN1; 
+        let cN1 = [];
+        for(let i=0; i<jqParaN1; i++) { cN1.push(`<div class="cajon jq">Jamón y Queso</div>`); }
 
         // 6. Llenar N2 y N3 BALANCEANDO LOS PESOS
         let maxN2 = 18, maxN3 = 20;
         let cN2 = [], cN3 = [];
-        let countN2 = 0, countN3 = 0; // Contadores de altura
+        let countN2 = 0, countN3 = 0;
         
-        let poolN2N3 = itemsRegulares.filter(i => i.qty > 0).sort((a, b) => b.qty - a.qty);
-        let totalPool = poolN2N3.reduce((acc, item) => acc + item.qty, 0);
-        let permiteEspacios = (totalPool + poolN2N3.length) <= (maxN2 + maxN3);
+        poolN2N3 = poolN2N3.filter(i => i.qty > 0).sort((a, b) => b.qty - a.qty);
+        let totalPoolFinal = poolN2N3.reduce((acc, item) => acc + item.qty, 0);
+        let permiteEspacios = (totalPoolFinal + poolN2N3.length) <= (maxN2 + maxN3);
 
         poolN2N3.forEach(item => {
             let remainingToPlace = item.qty;
-
             while (remainingToPlace > 0) {
-                // Elegir la nevera con MENOS cajones actuales para mantener las bases pesadas
                 let chooseN2 = false;
-                
                 if (countN2 < maxN2 && countN3 < maxN3) {
                     chooseN2 = countN2 <= countN3; 
-                } else if (countN2 < maxN2) {
-                    chooseN2 = true;
-                } else if (countN3 < maxN3) {
-                    chooseN2 = false;
-                } else {
-                    break; // Ambas llenas
-                }
+                } else if (countN2 < maxN2) { chooseN2 = true; }
+                else if (countN3 < maxN3) { chooseN2 = false; }
+                else { break; }
 
                 let arrayDestino = chooseN2 ? cN2 : cN3;
                 let espacioDisponible = chooseN2 ? (maxN2 - countN2) : (maxN3 - countN3);
@@ -234,20 +244,14 @@
                 
                 remainingToPlace -= cantidadAColocar;
                 
-                // Intercalar rejilla vacía
                 if (remainingToPlace === 0 && permiteEspacios) {
-                    if (chooseN2 && countN2 < maxN2) {
-                        arrayDestino.push(`<div class="cajon espacio">--- Espacio Libre ---</div>`);
-                        countN2++;
-                    } else if (!chooseN2 && countN3 < maxN3) {
-                        arrayDestino.push(`<div class="cajon espacio">--- Espacio Libre ---</div>`);
-                        countN3++;
-                    }
+                    if (chooseN2 && countN2 < maxN2) { arrayDestino.push(`<div class="cajon espacio">--- Espacio Libre ---</div>`); countN2++; }
+                    else if (!chooseN2 && countN3 < maxN3) { arrayDestino.push(`<div class="cajon espacio">--- Espacio Libre ---</div>`); countN3++; }
                 }
             }
         });
 
-        // 7. Imprimir en pantalla
+        // 7. Render final
         document.getElementById('cong-izq').innerHTML = cIzq.join('');
         document.getElementById('cong-der').innerHTML = cDer.join('');
         document.getElementById('nevera1').innerHTML = cN1.join('');
