@@ -8,7 +8,6 @@
     <link rel="icon" href="icono.png" type="image/png">
     <meta name="theme-color" content="#333333">
     
-    <!-- Librería PapaParse para leer Google Sheets -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     
     <style>
@@ -58,6 +57,7 @@
         .cajon.jq { background: #e91e63; border-color: #c2185b; }
         .cajon.espacio { background: transparent; border: 2px dashed #999; color: #666; font-style: italic; }
         .cajon.excedente { background: #9c27b0; border-color: #7b1fa2; }
+        .cajon.forrar { background: #e65100; border: 2px solid #fff; color: white; box-shadow: 0 0 5px rgba(0,0,0,0.5); font-style: italic;}
     </style>
 </head>
 <body>
@@ -65,7 +65,6 @@
 <div class="container" id="input-section">
     <h1>Stock a Refrigerar</h1>
     
-    <!-- NUEVO BOTÓN DE INTEGRACIÓN CON GOOGLE SHEETS -->
     <button id="btn-cargar" class="btn-importar" onclick="cargarRemito()">📥 Cargar Remito desde Google Lens</button>
     
     <div class="product-group">
@@ -135,12 +134,9 @@
     generarInputs(congIzqArr, 'cong-izq-list', 'ci');
     generarInputs(congDerArr, 'cong-der-list', 'cd');
 
-    // ==========================================
-    // NUEVA LÓGICA DE IMPORTACIÓN GOOGLE SHEETS
-    // ==========================================
     function cargarRemito() {
         const btn = document.getElementById('btn-cargar');
-        btn.innerHTML = "⏳ Conectando con Google Sheets...";
+        btn.innerHTML = "⏳ Conectando...";
         btn.disabled = true;
 
         const csvUrl = "https://docs.google.com/spreadsheets/d/1TvERh-7V40n9uQjVdW2aB_B9-Rr9C-fEYmZzrrGhXlc/export?format=csv";
@@ -150,15 +146,14 @@
             header: true,
             complete: function(results) {
                 llenarInputs(results.data);
-                btn.innerHTML = "✅ Remito Cargado con Éxito";
+                btn.innerHTML = "✅ Remito Cargado";
                 setTimeout(() => {
                     btn.innerHTML = "📥 Cargar Remito desde Google Lens";
                     btn.disabled = false;
                 }, 3000);
             },
             error: function(err) {
-                alert("Error al leer el archivo. Asegúrate de haber 'Publicado en la Web' el Google Sheets.");
-                btn.innerHTML = "📥 Cargar Remito desde Google Lens";
+                alert("Error. Asegúrate de haber 'Publicado en la Web' el Google Sheets.");
                 btn.disabled = false;
             }
         });
@@ -206,9 +201,6 @@
         });
     }
 
-    // ==========================================
-    // LÓGICA ORIGINAL DE DISTRIBUCIÓN
-    // ==========================================
     function getVal(id) { return (parseInt(document.getElementById(id).value) || 0); }
 
     function calcularDistribucion() {
@@ -217,20 +209,43 @@
 
         let maxIzq = 12, maxDer = 12;
         let cIzq = [], cDer = [];
+        let poolN2N3 = [];
 
+        // 1. REGLA DEL FORRADO: Solo las existencias (Hay) van al congelador, las nuevas (Llegan) van a neveras.
         congIzqArr.forEach((item, i) => {
-            let total = getVal(`st-ci${i}`) + getVal(`pe-ci${i}`);
-            for(let j=0; j<total; j++) {
+            let hay = getVal(`st-ci${i}`);
+            let llegan = getVal(`pe-ci${i}`);
+            
+            for(let j=0; j<hay; j++) {
                 if(maxIzq > 0) { cIzq.push(`<div class="cajon delicado">${item}</div>`); maxIzq--; }
             }
-        });
-        congDerArr.forEach((item, i) => {
-            let total = getVal(`st-cd${i}`) + getVal(`pe-cd${i}`);
-            for(let j=0; j<total; j++) {
-                if(maxDer > 0) { cDer.push(`<div class="cajon delicado">${item}</div>`); maxDer--; }
+            if(llegan > 0) {
+                poolN2N3.push({ name: `${item} (A Forrar)`, qty: llegan, isJQ: false, canFreeze: false, isForrar: true });
             }
         });
 
+        congDerArr.forEach((item, i) => {
+            let hay = getVal(`st-cd${i}`);
+            let llegan = getVal(`pe-cd${i}`);
+            
+            if(item.includes('Burrito')) {
+                // Excepción: Los burritos no se forran, todo va al congelador.
+                let total = hay + llegan;
+                for(let j=0; j<total; j++) {
+                    if(maxDer > 0) { cDer.push(`<div class="cajon delicado">${item}</div>`); maxDer--; }
+                }
+            } else {
+                // Cebolla y Verdura sí se forran
+                for(let j=0; j<hay; j++) {
+                    if(maxDer > 0) { cDer.push(`<div class="cajon delicado">${item}</div>`); maxDer--; }
+                }
+                if(llegan > 0) {
+                    poolN2N3.push({ name: `${item} (A Forrar)`, qty: llegan, isJQ: false, canFreeze: false, isForrar: true });
+                }
+            }
+        });
+
+        // 2. Lógica JQ 
         let totalJQ = getVal('st-JQ') + getVal('pe-JQ');
         let maxN1 = 11;
         let jqParaN1 = Math.min(totalJQ, maxN1);
@@ -242,11 +257,11 @@
             jqExcedente--;
         }
 
-        let poolN2N3 = [];
         if (jqExcedente > 0) {
-            poolN2N3.push({ name: 'Jamón y Queso', qty: jqExcedente, isJQ: true });
+            poolN2N3.push({ name: 'Jamón y Queso', qty: jqExcedente, isJQ: true, canFreeze: true, isForrar: false });
         }
 
+        // 3. Lógica Clásicas 
         clasicas.forEach((item, i) => {
             let total = getVal(`st-cl${i}`) + getVal(`pe-cl${i}`);
             if(total > 0) {
@@ -263,10 +278,11 @@
                     }
                     paraNevera = total - congeladosExitosos; 
                 }
-                poolN2N3.push({ name: item, qty: paraNevera, isJQ: false });
+                poolN2N3.push({ name: item, qty: paraNevera, isJQ: false, canFreeze: true, isForrar: false });
             }
         });
 
+        // 4. Lógica de Desbordamiento General
         poolN2N3.sort((a, b) => b.qty - a.qty);
         let totalEnN2N3 = poolN2N3.reduce((acc, item) => acc + item.qty, 0);
         let excedenteGeneral = totalEnN2N3 - 38;
@@ -274,6 +290,9 @@
         if (excedenteGeneral > 0) {
             for (let item of poolN2N3) {
                 if (excedenteGeneral <= 0 || (maxIzq + maxDer) <= 0) break;
+                // Candado de seguridad: No congelar lo que se tiene que forrar
+                if (item.canFreeze === false) continue;
+                
                 let aCongelar = Math.min(item.qty - 2, excedenteGeneral, (maxIzq + maxDer));
                 if (aCongelar > 0) {
                     item.qty -= aCongelar;
@@ -286,9 +305,11 @@
             }
         }
 
+        // 5. Llenar Nevera 1 (Exclusiva JQ)
         let cN1 = [];
         for(let i=0; i<jqParaN1; i++) { cN1.push(`<div class="cajon jq">Jamón y Queso</div>`); }
 
+        // 6. Llenar N2 y N3
         let maxN2 = 18, maxN3 = 20;
         let cN2 = [], cN3 = [];
         let countN2 = 0, countN3 = 0;
@@ -312,7 +333,11 @@
                 let cantidadAColocar = Math.min(remainingToPlace, espacioDisponible);
                 
                 for(let i=0; i<cantidadAColocar; i++) {
-                    let clase = item.isJQ ? "cajon jq" : "cajon";
+                    // Diseño visual diferente para las que hay que forrar
+                    let clase = "cajon";
+                    if (item.isJQ) clase = "cajon jq";
+                    if (item.isForrar) clase = "cajon forrar";
+                    
                     arrayDestino.push(`<div class="${clase}">${item.name}</div>`);
                     if (chooseN2) countN2++; else countN3++;
                 }
@@ -335,5 +360,3 @@
 </script>
 </body>
 </html>
-
-
