@@ -7,6 +7,10 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icono.png" type="image/png">
     <meta name="theme-color" content="#333333">
+    
+    <!-- Librería PapaParse para leer Google Sheets -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    
     <style>
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
@@ -35,8 +39,11 @@
             width: 100%; padding: 15px; background-color: #28a745; color: white; 
             border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold; 
             margin-top: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: 0.2s;
         }
+        button:disabled { background-color: #999; cursor: not-allowed; }
         button.btn-secundario { background-color: #6c757d; margin-top: 15px; }
+        button.btn-importar { background-color: #007bff; margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 8px;}
 
         .grid-container { display: none; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
         .nevera { 
@@ -57,6 +64,9 @@
 
 <div class="container" id="input-section">
     <h1>Stock a Refrigerar</h1>
+    
+    <!-- NUEVO BOTÓN DE INTEGRACIÓN CON GOOGLE SHEETS -->
+    <button id="btn-cargar" class="btn-importar" onclick="cargarRemito()">📥 Cargar Remito desde Google Lens</button>
     
     <div class="product-group">
         <h3>Jamón y Queso (Prioridad N1)</h3>
@@ -125,6 +135,80 @@
     generarInputs(congIzqArr, 'cong-izq-list', 'ci');
     generarInputs(congDerArr, 'cong-der-list', 'cd');
 
+    // ==========================================
+    // NUEVA LÓGICA DE IMPORTACIÓN GOOGLE SHEETS
+    // ==========================================
+    function cargarRemito() {
+        const btn = document.getElementById('btn-cargar');
+        btn.innerHTML = "⏳ Conectando con Google Sheets...";
+        btn.disabled = true;
+
+        const csvUrl = "https://docs.google.com/spreadsheets/d/1TvERh-7V40n9uQjVdW2aB_B9-Rr9C-fEYmZzrrGhXlc/export?format=csv";
+
+        Papa.parse(csvUrl, {
+            download: true,
+            header: true,
+            complete: function(results) {
+                llenarInputs(results.data);
+                btn.innerHTML = "✅ Remito Cargado con Éxito";
+                setTimeout(() => {
+                    btn.innerHTML = "📥 Cargar Remito desde Google Lens";
+                    btn.disabled = false;
+                }, 3000);
+            },
+            error: function(err) {
+                alert("Error al leer el archivo. Asegúrate de haber 'Publicado en la Web' el Google Sheets.");
+                btn.innerHTML = "📥 Cargar Remito desde Google Lens";
+                btn.disabled = false;
+            }
+        });
+    }
+
+    function llenarInputs(data) {
+        document.querySelectorAll('input[id^="pe-"]').forEach(input => input.value = "");
+
+        data.forEach(row => {
+            let producto = (row["Producto"] || "").toUpperCase();
+            let cantEmpanadas = parseFloat(row["Cajones Empanadas"]) || 0;
+            let cantBurritos = parseFloat(row["Cajones Burritos"]) || 0;
+
+            let idDestino = null;
+            let cantidadFinal = 0;
+
+            if (!producto) return;
+
+            if (producto.includes("JAMON") && producto.includes("QUESO")) { idDestino = "pe-JQ"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("BONDIOLA")) { idDestino = "pe-cl0"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("CAPRESSE")) { idDestino = "pe-cl1"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("CUCHILLO")) { idDestino = "pe-cl2"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("PICANTE")) { idDestino = "pe-cl3"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("SUAVE")) { idDestino = "pe-cl4"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("CHEESEBURGER")) { idDestino = "pe-cl5"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("HUMITA")) { idDestino = "pe-cl6"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("POLLO") && !producto.includes("CURRY") && !producto.includes("BURRITO")) { idDestino = "pe-cl7"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("ROQUEFORT")) { idDestino = "pe-cl8"; cantidadFinal = cantEmpanadas; }
+            
+            else if (producto.includes("CHOCLO") || producto.includes("CALABAZA")) { idDestino = "pe-ci0"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("CRIOLLA")) { idDestino = "pe-ci1"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("CURRY")) { idDestino = "pe-ci2"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("PUERRO") || producto.includes("HONGOS")) { idDestino = "pe-ci3"; cantidadFinal = cantEmpanadas; }
+            
+            else if (producto.includes("VERDURA") && !producto.includes("BURRITO")) { idDestino = "pe-cd0"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("CEBOLLA") && !producto.includes("BURRITO")) { idDestino = "pe-cd1"; cantidadFinal = cantEmpanadas; }
+            else if (producto.includes("BURRITO") && producto.includes("TERNERA")) { idDestino = "pe-cd2"; cantidadFinal = cantBurritos; }
+            else if (producto.includes("BURRITO") && producto.includes("CERDO")) { idDestino = "pe-cd3"; cantidadFinal = cantBurritos; }
+            else if (producto.includes("BURRITO") && producto.includes("POLLO")) { idDestino = "pe-cd4"; cantidadFinal = cantBurritos; }
+            else if (producto.includes("BURRITO") && producto.includes("VEG")) { idDestino = "pe-cd5"; cantidadFinal = cantBurritos; }
+
+            if (idDestino && cantidadFinal > 0) {
+                document.getElementById(idDestino).value = Math.ceil(cantidadFinal);
+            }
+        });
+    }
+
+    // ==========================================
+    // LÓGICA ORIGINAL DE DISTRIBUCIÓN
+    // ==========================================
     function getVal(id) { return (parseInt(document.getElementById(id).value) || 0); }
 
     function calcularDistribucion() {
@@ -134,7 +218,6 @@
         let maxIzq = 12, maxDer = 12;
         let cIzq = [], cDer = [];
 
-        // 1. Congelador Obligatorio (Delicadas y Burritos)
         congIzqArr.forEach((item, i) => {
             let total = getVal(`st-ci${i}`) + getVal(`pe-ci${i}`);
             for(let j=0; j<total; j++) {
@@ -148,13 +231,11 @@
             }
         });
 
-        // 2. Lógica de Jamón y Queso (Exclusivo N1 y Congelador)
         let totalJQ = getVal('st-JQ') + getVal('pe-JQ');
         let maxN1 = 11;
         let jqParaN1 = Math.min(totalJQ, maxN1);
         let jqExcedente = totalJQ > maxN1 ? totalJQ - maxN1 : 0;
         
-        // Enviar excedente de JQ al congelador (si hay espacio)
         while(jqExcedente > 0 && (maxIzq > 0 || maxDer > 0)) {
             if (maxIzq > 0) { cIzq.push(`<div class="cajon jq">Jamón y Queso (Exc)</div>`); maxIzq--; }
             else if (maxDer > 0) { cDer.push(`<div class="cajon jq">Jamón y Queso (Exc)</div>`); maxDer--; }
@@ -162,12 +243,10 @@
         }
 
         let poolN2N3 = [];
-        // Si el congelador se llenó por completo, el JQ restante va a N2/N3 solo como emergencia
         if (jqExcedente > 0) {
             poolN2N3.push({ name: 'Jamón y Queso', qty: jqExcedente, isJQ: true });
         }
 
-        // 3. Lógica Clásicas (Máximo 6 por sabor en nevera, el resto se intenta congelar)
         clasicas.forEach((item, i) => {
             let total = getVal(`st-cl${i}`) + getVal(`pe-cl${i}`);
             if(total > 0) {
@@ -188,7 +267,6 @@
             }
         });
 
-        // 4. Lógica de Desbordamiento General (si el pool de clásicas supera la capacidad de N2+N3 = 38)
         poolN2N3.sort((a, b) => b.qty - a.qty);
         let totalEnN2N3 = poolN2N3.reduce((acc, item) => acc + item.qty, 0);
         let excedenteGeneral = totalEnN2N3 - 38;
@@ -196,7 +274,6 @@
         if (excedenteGeneral > 0) {
             for (let item of poolN2N3) {
                 if (excedenteGeneral <= 0 || (maxIzq + maxDer) <= 0) break;
-                // Intentamos dejar un stock operativo base (mínimo 2) si hay que seguir reduciendo
                 let aCongelar = Math.min(item.qty - 2, excedenteGeneral, (maxIzq + maxDer));
                 if (aCongelar > 0) {
                     item.qty -= aCongelar;
@@ -209,11 +286,9 @@
             }
         }
 
-        // 5. Llenar Nevera 1 (Exclusiva JQ)
         let cN1 = [];
         for(let i=0; i<jqParaN1; i++) { cN1.push(`<div class="cajon jq">Jamón y Queso</div>`); }
 
-        // 6. Llenar N2 y N3 BALANCEANDO LOS PESOS
         let maxN2 = 18, maxN3 = 20;
         let cN2 = [], cN3 = [];
         let countN2 = 0, countN3 = 0;
@@ -251,7 +326,6 @@
             }
         });
 
-        // 7. Render final
         document.getElementById('cong-izq').innerHTML = cIzq.join('');
         document.getElementById('cong-der').innerHTML = cDer.join('');
         document.getElementById('nevera1').innerHTML = cN1.join('');
@@ -261,3 +335,5 @@
 </script>
 </body>
 </html>
+
+
