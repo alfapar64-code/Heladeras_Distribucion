@@ -4,27 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Distribución de Cajones</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="icono.png" type="image/png">
-    <meta name="theme-color" content="#333333">
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-    
     <style>
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
             margin: 0; padding: 10px; 
-            background-image: url('fondo.jpg'); 
-            background-size: cover; 
-            background-position: center; 
-            background-attachment: fixed;
+            background-color: #f4f6f9; /* Fondo liso más limpio */
         }
         .container { 
             max-width: 600px; margin: 0 auto; 
-            background: rgba(255, 255, 255, 0.92); 
+            background: white; 
             padding: 15px; border-radius: 12px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2); 
-            backdrop-filter: blur(5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
         }
         h1, h2, h3 { text-align: center; color: #222; margin-top: 0; }
         .product-group { margin-bottom: 20px; }
@@ -32,7 +22,7 @@
         .item-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #ddd; }
         .item-name { flex: 2; font-size: 0.85rem; font-weight: bold; color: #444; }
         .inputs { flex: 1; display: flex; gap: 5px; }
-        input { width: 40px; padding: 6px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
+        input[type="number"] { width: 40px; padding: 6px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
         
         button { 
             width: 100%; padding: 15px; background-color: #28a745; color: white; 
@@ -43,14 +33,15 @@
         button:disabled { background-color: #999; cursor: not-allowed; }
         button.btn-secundario { background-color: #6c757d; margin-top: 15px; }
         button.btn-importar { background-color: #007bff; margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 8px;}
+        button.btn-config { background-color: transparent; color: #666; border: 1px solid #ccc; font-size: 0.8rem; padding: 8px; box-shadow: none; margin-top: 20px;}
 
         .grid-container { display: none; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
         .nevera { 
-            background: rgba(224, 224, 224, 0.8); border: 2px solid #777; 
+            background: #f8f9fa; border: 2px solid #adb5bd; 
             border-radius: 6px; display: flex; flex-direction: column-reverse; 
             padding: 5px; height: 380px; overflow-y: auto; 
         }
-        .nevera-title { text-align: center; font-weight: bold; font-size: 0.85rem; margin-bottom: 5px; background: white; border-radius: 4px; padding: 2px;}
+        .nevera-title { text-align: center; font-weight: bold; font-size: 0.85rem; margin-bottom: 5px; background: #e9ecef; border-radius: 4px; padding: 4px;}
         
         .cajon { background: #ff9800; color: white; text-align: center; margin: 1px 0; padding: 4px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; border: 1px solid #e65100;}
         .cajon.delicado { background: #2196f3; border-color: #0b7dda; }
@@ -63,9 +54,13 @@
 <body>
 
 <div class="container" id="input-section">
-    <h1>Stock a Refrigerar</h1>
+    <h1>Control de Stock</h1>
     
-    <button id="btn-cargar" class="btn-importar" onclick="cargarRemito()">📥 Cargar Remito desde Google Lens</button>
+    <!-- Input oculto para abrir la cámara -->
+    <input type="file" id="fotoRemitoIA" accept="image/*" capture="environment" style="display:none;" onchange="procesarRemitoIA()">
+    
+    <!-- Botón que activa la cámara -->
+    <button id="btn-ia" class="btn-importar" onclick="document.getElementById('fotoRemitoIA').click()">📸 Escanear Remito con IA</button>
     
     <div class="product-group">
         <h3>Jamón y Queso (Prioridad N1)</h3>
@@ -82,11 +77,13 @@
         <div id="cong-izq-list"></div>
     </div>
     <div class="product-group" style="background:#e3f2fd; padding:10px; border-radius:8px;">
-        <h3 style="background:#1976d2;">Congelador: Lado Derecho</h3>
+        <h3 style="background:#1976d2;">Congelador: Lado Derecha</h3>
         <div id="cong-der-list"></div>
     </div>
 
     <button onclick="calcularDistribucion()">Calcular Distribución</button>
+
+    <button class="btn-config" onclick="borrarLlave()">⚙️ Cambiar o borrar API Key de Gemini</button>
 </div>
 
 <div class="container grid-container" id="output-section">
@@ -110,11 +107,10 @@
 </div>
 
 <script>
-    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
-
-    const clasicas = ['Bondiola (BD)', 'Capresse (CA)', 'Carne Cuchillo (CC)', 'Carne Picante (CP)', 'Carne Suave (CS)', 'Cheeseburger (CB)', 'Humita (HM)', 'Pollo (PL)', 'Roquefort c/ Jamón (RJ)'];
+    // --- 1. CONFIGURACIÓN DE LISTAS ---
+    const clasicas = ['Bondiola', 'Capresse', 'Carne Cuchillo', 'Carne Picante', 'Carne Suave', 'Cheeseburger', 'Humita', 'Pollo', 'Roquefort c/ Jamón'];
     const congIzqArr = ['Choclo y Calabaza', 'Carne Criolla Veg.', 'Pollo Curry Veg.', 'Puerro y Hongos'];
-    const congDerArr = ['Verdura (VR)', 'Cebolla y Queso (CQ)', 'Burrito Ternera', 'Burrito Cerdo', 'Burrito Pollo', 'Burrito Veg.'];
+    const congDerArr = ['Verdura', 'Cebolla y Queso', 'Burrito Ternera', 'Burrito Cerdo', 'Burrito Pollo', 'Burrito Veg.'];
 
     function generarInputs(array, containerId, prefix) {
         const container = document.getElementById(containerId);
@@ -134,73 +130,138 @@
     generarInputs(congIzqArr, 'cong-izq-list', 'ci');
     generarInputs(congDerArr, 'cong-der-list', 'cd');
 
-    function cargarRemito() {
-        const btn = document.getElementById('btn-cargar');
-        btn.innerHTML = "⏳ Conectando...";
+    // --- 2. INTEGRACIÓN CON GEMINI IA ---
+    async function procesarRemitoIA() {
+        let apiKey = localStorage.getItem('geminiApiKey');
+        
+        // Si no hay llave guardada, la pedimos mediante un cuadro de diálogo
+        if (!apiKey) {
+            apiKey = prompt("Por favor, ingresa tu API Key de Gemini. Solo se pedirá esta vez:");
+            if (!apiKey) return; // Si el usuario cancela, no hacemos nada
+            localStorage.setItem('geminiApiKey', apiKey);
+        }
+
+        const fileInput = document.getElementById('fotoRemitoIA');
+        if (fileInput.files.length === 0) return;
+
+        const btn = document.getElementById('btn-ia');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = "⏳ La IA está leyendo y calculando...";
         btn.disabled = true;
 
-        const csvUrl = "https://docs.google.com/spreadsheets/d/1TvERh-7V40n9uQjVdW2aB_B9-Rr9C-fEYmZzrrGhXlc/export?format=csv";
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onloadend = async function() {
+            const base64Image = reader.result.split(',')[1];
 
-        Papa.parse(csvUrl, {
-            download: true,
-            header: true,
-            complete: function(results) {
-                llenarInputs(results.data);
-                btn.innerHTML = "✅ Remito Cargado";
-                setTimeout(() => {
-                    btn.innerHTML = "📥 Cargar Remito desde Google Lens";
-                    btn.disabled = false;
-                }, 3000);
-            },
-            error: function(err) {
-                alert("Error. Asegúrate de haber 'Publicado en la Web' el Google Sheets.");
-                btn.disabled = false;
+            // Orden estricta para que devuelva formato de código (JSON)
+            const promptText = `Analiza este remito. Calcula la cantidad de cajones dividiendo las empanadas entre 30 y los burritos entre 14. Devuelve ÚNICAMENTE un objeto JSON válido donde las claves sean el nombre del producto en MAYÚSCULAS y los valores sean los números finales. Ejemplo: {"JAMON Y QUESO": 5, "BONDIOLA": 2.5}. No incluyas texto adicional ni formato markdown.`;
+
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: promptText },
+                        { inline_data: { mime_type: file.type, data: base64Image } }
+                    ]
+                }]
+            };
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.candidates) {
+                    let textoIA = data.candidates[0].content.parts[0].text;
+                    // Limpiamos el texto por si la IA añade comillas de código
+                    textoIA = textoIA.replace(/```json/g, '').replace(/```/g, '').trim();
+                    
+                    try {
+                        const datosJSON = JSON.parse(textoIA);
+                        inyectarDatos(datosJSON);
+                        btn.innerHTML = "✅ ¡Datos Inyectados!";
+                        btn.style.backgroundColor = "#28a745";
+                    } catch (e) {
+                        alert("Error al interpretar los datos de la IA. Intenta tomar la foto más cerca.");
+                        btn.innerHTML = originalText;
+                    }
+                } else {
+                    if(data.error && data.error.code === 400) {
+                        alert("API Key inválida. Bórrala desde el botón de abajo e intenta de nuevo.");
+                    } else {
+                        alert("Error de la IA: " + (data.error ? data.error.message : "Desconocido"));
+                    }
+                    btn.innerHTML = originalText;
+                }
+            } catch (error) {
+                alert("Error de conexión. Verifica tu internet.");
+                btn.innerHTML = originalText;
             }
-        });
+            
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                btn.style.backgroundColor = "#007bff";
+            }, 3000);
+        }
+        reader.readAsDataURL(file);
     }
 
-    function llenarInputs(data) {
+    // --- 3. REPARTO AUTOMÁTICO EN CASILLAS ---
+    function inyectarDatos(datos) {
+        // Limpiamos todas las casillas de "Llegan" primero
         document.querySelectorAll('input[id^="pe-"]').forEach(input => input.value = "");
 
-        data.forEach(row => {
-            let producto = (row["Producto"] || "").toUpperCase();
-            let cantEmpanadas = parseFloat(row["Cajones Empanadas"]) || 0;
-            let cantBurritos = parseFloat(row["Cajones Burritos"]) || 0;
+        for (const [producto, cantidad] of Object.entries(datos)) {
+            let cant = Math.ceil(parseFloat(cantidad));
+            if(cant <= 0) continue;
 
             let idDestino = null;
-            let cantidadFinal = 0;
+            let p = producto.toUpperCase();
 
-            if (!producto) return;
-
-            if (producto.includes("JAMON") && producto.includes("QUESO")) { idDestino = "pe-JQ"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("BONDIOLA")) { idDestino = "pe-cl0"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("CAPRESSE")) { idDestino = "pe-cl1"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("CUCHILLO")) { idDestino = "pe-cl2"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("PICANTE")) { idDestino = "pe-cl3"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("SUAVE")) { idDestino = "pe-cl4"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("CHEESEBURGER")) { idDestino = "pe-cl5"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("HUMITA")) { idDestino = "pe-cl6"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("POLLO") && !producto.includes("CURRY") && !producto.includes("BURRITO")) { idDestino = "pe-cl7"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("ROQUEFORT")) { idDestino = "pe-cl8"; cantidadFinal = cantEmpanadas; }
+            // Lógica de clasificación
+            if (p.includes("JAMON") && p.includes("QUESO") && !p.includes("ROQUEFORT")) idDestino = "pe-JQ";
+            else if (p.includes("BONDIOLA")) idDestino = "pe-cl0";
+            else if (p.includes("CAPRESSE")) idDestino = "pe-cl1";
+            else if (p.includes("CUCHILLO")) idDestino = "pe-cl2";
+            else if (p.includes("PICANTE")) idDestino = "pe-cl3";
+            else if (p.includes("SUAVE")) idDestino = "pe-cl4";
+            else if (p.includes("CHEESEBURGER")) idDestino = "pe-cl5";
+            else if (p.includes("HUMITA")) idDestino = "pe-cl6";
+            else if (p.includes("POLLO") && !p.includes("CURRY") && !p.includes("BURRITO")) idDestino = "pe-cl7";
+            else if (p.includes("ROQUEFORT")) idDestino = "pe-cl8";
             
-            else if (producto.includes("CHOCLO") || producto.includes("CALABAZA")) { idDestino = "pe-ci0"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("CRIOLLA")) { idDestino = "pe-ci1"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("CURRY")) { idDestino = "pe-ci2"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("PUERRO") || producto.includes("HONGOS")) { idDestino = "pe-ci3"; cantidadFinal = cantEmpanadas; }
+            else if (p.includes("CHOCLO") || p.includes("CALABAZA")) idDestino = "pe-ci0";
+            else if (p.includes("CRIOLLA")) idDestino = "pe-ci1";
+            else if (p.includes("CURRY")) idDestino = "pe-ci2";
+            else if (p.includes("PUERRO") || p.includes("HONGOS")) idDestino = "pe-ci3";
             
-            else if (producto.includes("VERDURA") && !producto.includes("BURRITO")) { idDestino = "pe-cd0"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("CEBOLLA") && !producto.includes("BURRITO")) { idDestino = "pe-cd1"; cantidadFinal = cantEmpanadas; }
-            else if (producto.includes("BURRITO") && producto.includes("TERNERA")) { idDestino = "pe-cd2"; cantidadFinal = cantBurritos; }
-            else if (producto.includes("BURRITO") && producto.includes("CERDO")) { idDestino = "pe-cd3"; cantidadFinal = cantBurritos; }
-            else if (producto.includes("BURRITO") && producto.includes("POLLO")) { idDestino = "pe-cd4"; cantidadFinal = cantBurritos; }
-            else if (producto.includes("BURRITO") && producto.includes("VEG")) { idDestino = "pe-cd5"; cantidadFinal = cantBurritos; }
+            else if (p.includes("VERDURA") && !p.includes("BURRITO")) idDestino = "pe-cd0";
+            else if (p.includes("CEBOLLA") && !p.includes("BURRITO")) idDestino = "pe-cd1";
+            else if (p.includes("BURRITO") && p.includes("TERNERA")) idDestino = "pe-cd2";
+            else if (p.includes("BURRITO") && p.includes("CERDO")) idDestino = "pe-cd3";
+            else if (p.includes("BURRITO") && p.includes("POLLO")) idDestino = "pe-cd4";
+            else if (p.includes("BURRITO") && p.includes("VEG")) idDestino = "pe-cd5";
 
-            if (idDestino && cantidadFinal > 0) {
-                document.getElementById(idDestino).value = Math.ceil(cantidadFinal);
+            if (idDestino) {
+                // Sumamos por si la IA separó el mismo producto en dos líneas
+                let actual = parseInt(document.getElementById(idDestino).value) || 0;
+                document.getElementById(idDestino).value = actual + cant;
             }
-        });
+        }
     }
 
+    function borrarLlave() {
+        localStorage.removeItem('geminiApiKey');
+        alert("Llave borrada. La próxima vez que escanees un remito, se te pedirá ingresar tu API Key nuevamente.");
+    }
+
+    // --- 4. LÓGICA DE DISTRIBUCIÓN FÍSICA (Tu regla de forrado) ---
     function getVal(id) { return (parseInt(document.getElementById(id).value) || 0); }
 
     function calcularDistribucion() {
@@ -211,41 +272,27 @@
         let cIzq = [], cDer = [];
         let poolN2N3 = [];
 
-        // 1. REGLA DEL FORRADO: Solo las existencias (Hay) van al congelador, las nuevas (Llegan) van a neveras.
+        // Regla Forrado Congelador Izquierdo
         congIzqArr.forEach((item, i) => {
             let hay = getVal(`st-ci${i}`);
             let llegan = getVal(`pe-ci${i}`);
-            
-            for(let j=0; j<hay; j++) {
-                if(maxIzq > 0) { cIzq.push(`<div class="cajon delicado">${item}</div>`); maxIzq--; }
-            }
-            if(llegan > 0) {
-                poolN2N3.push({ name: `${item} (A Forrar)`, qty: llegan, isJQ: false, canFreeze: false, isForrar: true });
-            }
+            for(let j=0; j<hay; j++) { if(maxIzq > 0) { cIzq.push(`<div class="cajon delicado">${item}</div>`); maxIzq--; } }
+            if(llegan > 0) poolN2N3.push({ name: `${item} (A Forrar)`, qty: llegan, isJQ: false, canFreeze: false, isForrar: true });
         });
 
+        // Regla Forrado Congelador Derecho
         congDerArr.forEach((item, i) => {
             let hay = getVal(`st-cd${i}`);
             let llegan = getVal(`pe-cd${i}`);
-            
             if(item.includes('Burrito')) {
-                // Excepción: Los burritos no se forran, todo va al congelador.
                 let total = hay + llegan;
-                for(let j=0; j<total; j++) {
-                    if(maxDer > 0) { cDer.push(`<div class="cajon delicado">${item}</div>`); maxDer--; }
-                }
+                for(let j=0; j<total; j++) { if(maxDer > 0) { cDer.push(`<div class="cajon delicado">${item}</div>`); maxDer--; } }
             } else {
-                // Cebolla y Verdura sí se forran
-                for(let j=0; j<hay; j++) {
-                    if(maxDer > 0) { cDer.push(`<div class="cajon delicado">${item}</div>`); maxDer--; }
-                }
-                if(llegan > 0) {
-                    poolN2N3.push({ name: `${item} (A Forrar)`, qty: llegan, isJQ: false, canFreeze: false, isForrar: true });
-                }
+                for(let j=0; j<hay; j++) { if(maxDer > 0) { cDer.push(`<div class="cajon delicado">${item}</div>`); maxDer--; } }
+                if(llegan > 0) poolN2N3.push({ name: `${item} (A Forrar)`, qty: llegan, isJQ: false, canFreeze: false, isForrar: true });
             }
         });
 
-        // 2. Lógica JQ 
         let totalJQ = getVal('st-JQ') + getVal('pe-JQ');
         let maxN1 = 11;
         let jqParaN1 = Math.min(totalJQ, maxN1);
@@ -256,12 +303,8 @@
             else if (maxDer > 0) { cDer.push(`<div class="cajon jq">Jamón y Queso (Exc)</div>`); maxDer--; }
             jqExcedente--;
         }
+        if (jqExcedente > 0) poolN2N3.push({ name: 'Jamón y Queso', qty: jqExcedente, isJQ: true, canFreeze: true, isForrar: false });
 
-        if (jqExcedente > 0) {
-            poolN2N3.push({ name: 'Jamón y Queso', qty: jqExcedente, isJQ: true, canFreeze: true, isForrar: false });
-        }
-
-        // 3. Lógica Clásicas 
         clasicas.forEach((item, i) => {
             let total = getVal(`st-cl${i}`) + getVal(`pe-cl${i}`);
             if(total > 0) {
@@ -269,12 +312,10 @@
                 if (total > 6) {
                     let exceso = total - 6;
                     let congeladosExitosos = 0;
-                    
                     while(exceso > 0 && (maxIzq > 0 || maxDer > 0)) {
                         if (maxIzq > 0) { cIzq.push(`<div class="cajon excedente">${item} (Exc)</div>`); maxIzq--; }
                         else if (maxDer > 0) { cDer.push(`<div class="cajon excedente">${item} (Exc)</div>`); maxDer--; }
-                        exceso--;
-                        congeladosExitosos++;
+                        exceso--; congeladosExitosos++;
                     }
                     paraNevera = total - congeladosExitosos; 
                 }
@@ -282,7 +323,6 @@
             }
         });
 
-        // 4. Lógica de Desbordamiento General
         poolN2N3.sort((a, b) => b.qty - a.qty);
         let totalEnN2N3 = poolN2N3.reduce((acc, item) => acc + item.qty, 0);
         let excedenteGeneral = totalEnN2N3 - 38;
@@ -290,13 +330,10 @@
         if (excedenteGeneral > 0) {
             for (let item of poolN2N3) {
                 if (excedenteGeneral <= 0 || (maxIzq + maxDer) <= 0) break;
-                // Candado de seguridad: No congelar lo que se tiene que forrar
-                if (item.canFreeze === false) continue;
-                
+                if (item.canFreeze === false) continue; // Protección a forrar
                 let aCongelar = Math.min(item.qty - 2, excedenteGeneral, (maxIzq + maxDer));
                 if (aCongelar > 0) {
-                    item.qty -= aCongelar;
-                    excedenteGeneral -= aCongelar;
+                    item.qty -= aCongelar; excedenteGeneral -= aCongelar;
                     for(let i=0; i<aCongelar; i++) {
                         if (maxIzq > 0) { cIzq.push(`<div class="cajon excedente">${item.name} (Exc)</div>`); maxIzq--; }
                         else if (maxDer > 0) { cDer.push(`<div class="cajon excedente">${item.name} (Exc)</div>`); maxDer--; }
@@ -305,11 +342,9 @@
             }
         }
 
-        // 5. Llenar Nevera 1 (Exclusiva JQ)
         let cN1 = [];
         for(let i=0; i<jqParaN1; i++) { cN1.push(`<div class="cajon jq">Jamón y Queso</div>`); }
 
-        // 6. Llenar N2 y N3
         let maxN2 = 18, maxN3 = 20;
         let cN2 = [], cN3 = [];
         let countN2 = 0, countN3 = 0;
@@ -322,22 +357,19 @@
             let remainingToPlace = item.qty;
             while (remainingToPlace > 0) {
                 let chooseN2 = false;
-                if (countN2 < maxN2 && countN3 < maxN3) {
-                    chooseN2 = countN2 <= countN3; 
-                } else if (countN2 < maxN2) { chooseN2 = true; }
-                else if (countN3 < maxN3) { chooseN2 = false; }
-                else { break; }
+                if (countN2 < maxN2 && countN3 < maxN3) chooseN2 = countN2 <= countN3; 
+                else if (countN2 < maxN2) chooseN2 = true;
+                else if (countN3 < maxN3) chooseN2 = false;
+                else break;
 
                 let arrayDestino = chooseN2 ? cN2 : cN3;
                 let espacioDisponible = chooseN2 ? (maxN2 - countN2) : (maxN3 - countN3);
                 let cantidadAColocar = Math.min(remainingToPlace, espacioDisponible);
                 
                 for(let i=0; i<cantidadAColocar; i++) {
-                    // Diseño visual diferente para las que hay que forrar
                     let clase = "cajon";
                     if (item.isJQ) clase = "cajon jq";
                     if (item.isForrar) clase = "cajon forrar";
-                    
                     arrayDestino.push(`<div class="${clase}">${item.name}</div>`);
                     if (chooseN2) countN2++; else countN3++;
                 }
