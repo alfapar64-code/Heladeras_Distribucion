@@ -101,23 +101,14 @@
 </div>
 
 <script>
-    // --- 1. CONFIGURACIÓN DE LISTAS (ORDEN ESTRICTO PARA EL CONGELADOR) ---
     const clasicas = ['Bondiola', 'Capresse', 'Carne Cuchillo', 'Carne Picante', 'Carne Suave', 'Cheeseburger', 'Humita', 'Pollo', 'Roquefort c/ Jamón'];
-    // Orden exacto de arriba hacia abajo
     const congIzqArr = ['Pollo Curry Veg.', 'Carne Criolla Veg.', 'Choclo y Calabaza', 'Puerro y Hongos'];
     const congDerArr = ['Cebolla y Queso', 'Verdura', 'Burrito Ternera', 'Burrito Pollo', 'Burrito Cerdo', 'Burrito Veg.'];
 
     function generarInputs(array, containerId, prefix) {
         const container = document.getElementById(containerId);
         array.forEach((item, index) => {
-            container.innerHTML += `
-                <div class="item-row">
-                    <span class="item-name">${item}</span>
-                    <div class="inputs">
-                        <input type="number" id="st-${prefix}${index}" placeholder="Hay">
-                        <input type="number" id="pe-${prefix}${index}" placeholder="Llegan">
-                    </div>
-                </div>`;
+            container.innerHTML += `<div class="item-row"><span class="item-name">${item}</span><div class="inputs"><input type="number" id="st-${prefix}${index}" placeholder="Hay"><input type="number" id="pe-${prefix}${index}" placeholder="Llegan"></div></div>`;
         });
     }
 
@@ -125,18 +116,13 @@
     generarInputs(congIzqArr, 'cong-izq-list', 'ci');
     generarInputs(congDerArr, 'cong-der-list', 'cd');
 
-    // --- RECUPERAR MEMORIA AL CARGAR LA PÁGINA ---
     window.onload = function() {
         let guardado = localStorage.getItem('estadoDistribucion');
         if (guardado) {
             let datos = JSON.parse(guardado);
-            for (let id in datos) {
-                if (document.getElementById(id)) document.getElementById(id).value = datos[id];
-            }
+            for (let id in datos) { if (document.getElementById(id)) document.getElementById(id).value = datos[id]; }
         }
-        if (localStorage.getItem('vistaActiva') === 'output') {
-            calcularDistribucion();
-        }
+        if (localStorage.getItem('vistaActiva') === 'output') calcularDistribucion();
     };
 
     function ejecutarYGuardar() {
@@ -216,7 +202,7 @@
                     let textoIA = data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
                     try {
                         inyectarDatos(JSON.parse(textoIA));
-                        ejecutarYGuardar(); // Auto-guardamos lo que escanea la IA
+                        ejecutarYGuardar(); 
                         btn.innerHTML = "✅ ¡Datos Inyectados!"; btn.style.backgroundColor = "#28a745";
                     } catch (e) { alert("Error al interpretar los datos."); btn.innerHTML = originalText; }
                 } else {
@@ -246,12 +232,10 @@
             else if (p.includes("HUMITA")) idDestino = "pe-cl6";
             else if (p.includes("POLLO") && !p.includes("CURRY") && !p.includes("BURRITO")) idDestino = "pe-cl7";
             else if (p.includes("ROQUEFORT")) idDestino = "pe-cl8";
-            // Nuevos índices basados en el orden estricto
             else if (p.includes("CURRY")) idDestino = "pe-ci0";
             else if (p.includes("CRIOLLA")) idDestino = "pe-ci1";
             else if (p.includes("CHOCLO") || p.includes("CALABAZA")) idDestino = "pe-ci2";
             else if (p.includes("PUERRO") || p.includes("HONGOS")) idDestino = "pe-ci3";
-            
             else if (p.includes("CEBOLLA") && !p.includes("BURRITO")) idDestino = "pe-cd0";
             else if (p.includes("VERDURA") && !p.includes("BURRITO")) idDestino = "pe-cd1";
             else if (p.includes("BURRITO") && p.includes("TERNERA")) idDestino = "pe-cd2";
@@ -278,7 +262,6 @@
         let arrDerExc = [], arrDerNat = [];
         let poolN2N3 = [];
 
-        // 1. Calcular Nativas de Congelador y recopilar excedentes a Forrar
         congIzqArr.forEach((item, i) => {
             let hay = getVal(`st-ci${i}`), llegan = getVal(`pe-ci${i}`);
             let colorClase = getColorClass(item);
@@ -298,7 +281,6 @@
             }
         });
 
-        // 2. Lógica Excedentes JQ y Clásicas hacia Congelador
         let totalJQ = getVal('st-JQ') + getVal('pe-JQ');
         let maxN1 = 11;
         let jqParaN1 = Math.min(totalJQ, maxN1);
@@ -330,14 +312,13 @@
             }
         });
 
-        // Desbordamiento General N2/N3 hacia Congelador
         poolN2N3.sort((a, b) => b.qty - a.qty);
         let excedenteGeneral = poolN2N3.reduce((acc, item) => acc + item.qty, 0) - 38;
         
         if (excedenteGeneral > 0) {
             for (let item of poolN2N3) {
                 if (excedenteGeneral <= 0 || (maxIzq + maxDer) <= 0) break;
-                if (item.canFreeze === false) continue; // Intocables (A Forrar)
+                if (item.canFreeze === false) continue; 
                 let aCongelar = Math.min(item.qty - 2, excedenteGeneral, (maxIzq + maxDer));
                 let colorClase = getColorClass(item.baseName);
                 if (aCongelar > 0) {
@@ -350,18 +331,19 @@
             }
         }
 
-        // 3. Renderizar Congeladores (Excedentes al fondo, Nativas arriba)
         document.getElementById('cong-izq').innerHTML = arrIzqExc.join('') + arrIzqNat.join('');
         document.getElementById('cong-der').innerHTML = arrDerExc.join('') + arrDerNat.join('');
 
-        // 4. Renderizar Neveras
         let cN1 = [];
         for(let i=0; i<jqParaN1; i++) { cN1.push(`<div class="cajon ${colorJQ}">Jamón y Queso</div>`); }
 
-        // Agrupar los "A Forrar" juntos al inicio para que queden al fondo de las neveras
+        // AQUÍ ESTÁ LA MAGIA: ORDEN INVERTIDO PARA QUE "A FORRAR" QUEDE HASTA ARRIBA
         poolN2N3 = poolN2N3.filter(i => i.qty > 0).sort((a, b) => {
-            if (a.isForrar && !b.isForrar) return -1;
-            if (!a.isForrar && b.isForrar) return 1;
+            // Si "A" NO es forrar y "B" SÍ es forrar, A va primero en la lista (lo que significa que se dibuja abajo en la nevera)
+            if (!a.isForrar && b.isForrar) return -1;
+            // Si "A" SÍ es forrar y "B" NO, B va primero
+            if (a.isForrar && !b.isForrar) return 1;
+            // Si ambas son del mismo tipo (ambas forran o ninguna forra), la de mayor cantidad va primero (queda abajo)
             return b.qty - a.qty;
         });
 
@@ -390,7 +372,7 @@
                 }
                 remainingToPlace -= cantidadAColocar;
                 
-                // No meter espacios si son las de "A forrar" para mantenerlas agrupadas visualmente
+                // Los espacios se siguen suprimiendo para las "A Forrar", así que el grupo queda compacto y arriba
                 if (remainingToPlace === 0 && permiteEspacios && !item.isForrar) {
                     if (chooseN2 && countN2 < maxN2) { arrayDestino.push(`<div class="cajon espacio">--- Espacio Libre ---</div>`); countN2++; }
                     else if (!chooseN2 && countN3 < maxN3) { arrayDestino.push(`<div class="cajon espacio">--- Espacio Libre ---</div>`); countN3++; }
