@@ -16,10 +16,10 @@
         input[type="number"] { width: 40px; padding: 6px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
         
         button { width: 100%; padding: 15px; background-color: #28a745; color: white; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: 0.2s; }
-        button:disabled { background-color: #999; cursor: not-allowed; }
+        button:disabled { background-color: #999 !important; cursor: not-allowed; }
         button.btn-secundario { background-color: #007bff; margin-top: 15px; }
         button.btn-peligro { background-color: #dc3545; margin-top: 10px; }
-        button.btn-importar { background-color: #007bff; margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 8px;}
+        button.btn-importar { background-color: #007bff; display: flex; justify-content: center; align-items: center; gap: 8px;}
         button.btn-config { background-color: transparent; color: #666; border: 1px solid #ccc; font-size: 0.8rem; padding: 8px; box-shadow: none; margin-top: 20px;}
 
         .grid-container { display: none; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
@@ -53,9 +53,14 @@
 <div class="container" id="input-section">
     <h1>Control de Stock</h1>
     
-    <!-- Se quitó 'capture="environment"' para permitir seleccionar Cámara o Galería -->
-    <input type="file" id="fotoRemitoIA" accept="image/*" style="display:none;" onchange="procesarRemitoIA()">
-    <button id="btn-ia" class="btn-importar" onclick="document.getElementById('fotoRemitoIA').click()">📸 Escanear Remito con IA</button>
+    <!-- NUEVA SECCIÓN DE BOTONES DIVIDIDOS -->
+    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+        <input type="file" id="fotoRemitoCamara" accept="image/*" capture="environment" style="display:none;" onchange="procesarRemitoIA('fotoRemitoCamara', 'btn-camara')">
+        <input type="file" id="fotoRemitoGaleria" accept="image/*" style="display:none;" onchange="procesarRemitoIA('fotoRemitoGaleria', 'btn-galeria')">
+
+        <button id="btn-camara" class="btn-importar" style="margin-top: 0; flex: 1;" onclick="document.getElementById('fotoRemitoCamara').click()">📸 Cámara</button>
+        <button id="btn-galeria" class="btn-importar" style="margin-top: 0; flex: 1; background-color: #6c757d;" onclick="document.getElementById('fotoRemitoGaleria').click()">🖼️ Galería</button>
+    </div>
     
     <div class="product-group">
         <h3>Jamón y Queso (Prioridad N1)</h3>
@@ -201,7 +206,8 @@
         });
     }
 
-    async function procesarRemitoIA() {
+    // --- FUNCIÓN MODIFICADA PARA MANEJAR LOS DOS BOTONES ---
+    async function procesarRemitoIA(inputId, btnId) {
         let apiKey = localStorage.getItem('geminiApiKey');
         if (!apiKey) {
             apiKey = prompt("Por favor, ingresa tu API Key de Gemini. Solo se pedirá esta vez:");
@@ -209,32 +215,34 @@
             localStorage.setItem('geminiApiKey', apiKey);
         }
 
-        const fileInput = document.getElementById('fotoRemitoIA');
+        const fileInput = document.getElementById(inputId);
         if (fileInput.files.length === 0) return;
-        const btn = document.getElementById('btn-ia');
+        
+        const btn = document.getElementById(btnId);
+        const btnC = document.getElementById('btn-camara');
+        const btnG = document.getElementById('btn-galeria');
         const originalText = btn.innerHTML;
         
-        // Fase 1: Anunciamos que vamos a comprimir
-        btn.innerHTML = "⏳ Comprimiendo imagen..."; 
-        btn.disabled = true;
+        // Bloqueamos ambos botones para evitar toques accidentales
+        btnC.disabled = true;
+        btnG.disabled = true;
         
-        // TRUCO: Forzamos una micropausa para que el teléfono actualice el botón visualmente antes de trancarse comprimiendo
+        btn.innerHTML = "⏳ Comprimiendo..."; 
+        
+        // Micropausa forzada
         await new Promise(resolve => setTimeout(resolve, 50));
 
         const file = fileInput.files[0];
 
         try {
-            // Ejecutamos la compresión
             const base64Image = await comprimirImagen(file);
             
-            // Fase 2: Anunciamos que ya está enviando a la IA
-            btn.innerHTML = "⏳ La IA está calculando...";
-            await new Promise(resolve => setTimeout(resolve, 50)); // Micropausa visual
+            btn.innerHTML = "⏳ La IA calcula...";
+            await new Promise(resolve => setTimeout(resolve, 50));
 
             const promptText = `Analiza este remito. Calcula la cantidad de cajones dividiendo las empanadas entre 30 y los burritos entre 14. Devuelve ÚNICAMENTE un objeto JSON válido donde las claves sean el nombre del producto en MAYÚSCULAS y los valores sean los números finales. Ejemplo: {"JAMON Y QUESO": 5}. No incluyas texto adicional.`;
             const payload = { contents: [{ parts: [{ text: promptText }, { inline_data: { mime_type: "image/jpeg", data: base64Image } }] }] };
 
-            // Usamos tu enlace original intacto
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
             });
@@ -245,7 +253,7 @@
                 try {
                     inyectarDatos(JSON.parse(textoIA));
                     ejecutarYGuardar(); 
-                    btn.innerHTML = "✅ ¡Datos Inyectados!"; btn.style.backgroundColor = "#28a745";
+                    btn.innerHTML = "✅ ¡Listo!"; btn.style.backgroundColor = "#28a745";
                 } catch (e) { alert("Error al interpretar los datos."); btn.innerHTML = originalText; }
             } else {
                 if(data.error && data.error.code === 400) alert("API Key inválida."); else alert("Error de la IA.");
@@ -256,8 +264,15 @@
             btn.innerHTML = originalText; 
         }
         
-        setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; btn.style.backgroundColor = "#007bff"; }, 3000);
-        fileInput.value = ""; // Permite volver a seleccionar la misma foto
+        setTimeout(() => { 
+            btn.innerHTML = originalText; 
+            btnC.disabled = false; 
+            btnG.disabled = false;
+            btnC.style.backgroundColor = "#007bff"; 
+            btnG.style.backgroundColor = "#6c757d"; 
+        }, 3000);
+        
+        fileInput.value = ""; 
     }
 
     function inyectarDatos(datos) {
@@ -382,7 +397,6 @@
         let cN1 = [];
         for(let i=0; i<jqParaN1; i++) { cN1.push(`<div class="cajon ${colorJQ}">Jamón y Queso</div>`); }
 
-        // AQUÍ ESTÁ LA MAGIA: ORDEN INVERTIDO PARA QUE "A FORRAR" QUEDE HASTA ARRIBA
         poolN2N3 = poolN2N3.filter(i => i.qty > 0).sort((a, b) => {
             if (!a.isForrar && b.isForrar) return -1;
             if (a.isForrar && !b.isForrar) return 1;
